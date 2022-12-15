@@ -6,6 +6,7 @@ with open('info.yaml') as fh:
     conf = yaml.load(fh, Loader=yaml.FullLoader)
 
 BSC_url = 'https://bsc-dataseed.binance.org/'
+BSC_test_url = 'https://data-seed-prebsc-2-s3.binance.org:8545'
 Auro_url = 'https://mainnet.aurora.dev'
 Poly_url = 'https://polygon-rpc.com'
 
@@ -23,6 +24,7 @@ Aurotoken = '0x2BAe00C8BC1868a5F7a216E881Bae9e662630111'
 
 Auro_addr = '0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
 BSC_addr = '0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
+BSC_test_addr = '0x50F6dd0916294b6508AbdCeC01f78e7851Ff18C1'
 Poly_addr = '0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
 
 f = open('router_abi.json')
@@ -33,6 +35,9 @@ Synapse_abi = json.load(f)
 f.close()
 f = open('trade_abi.json')
 trade_abi = json.load(f)
+f.close()
+f = open('test.json')
+bsc_test = json.load(f)
 f.close()
 private_key = conf['key']
 web3 = Web3(Web3.HTTPProvider(BSC_url))
@@ -53,17 +58,19 @@ def getPrice(addr, url, path, decimal):
 def trading(buy_url, sell_url, buy_addr, sell_addr, buyamounts, tokenaddr, buynet, sellnet):
     result = 0
     # for i in range(9):
-    web3 = Web3(Web3.HTTPProvider(buy_url))
-    trade_contract = web3.eth.contract(address=buy_addr, abi= trade_abi)
+    web3 = Web3(Web3.HTTPProvider(BSC_test_url))
+    print(web3.isConnected())
+    trade_contract = web3.eth.contract(address=BSC_test_addr, abi= bsc_test)
+    print(trade_contract)
     to = account + "000000000000000000000000"
     
     lockId = '2326436938591503159836224363336437055'
 
-    
-    nonce = web3.eth.get_transaction_count(account)
+    sender_address = '0x3019e3b17c8446957412154893012627d5E4e282'
+    nonce = web3.eth.get_transaction_count(sender_address)
     print("buying now...")
     buy = trade_contract.functions.buy([int(buyamounts[0]), int(buyamounts[1])], account, to, int(lockId), sellnet).build_transaction({
-        'from': account,
+        'from': sender_address,
         'gas': 250000,
         'gasPrice': web3.toWei('10','gwei'),
         'nonce': nonce
@@ -75,14 +82,14 @@ def trading(buy_url, sell_url, buy_addr, sell_addr, buyamounts, tokenaddr, buyne
     print(sign_buy.hash.hex())
     buyresult = trade_contract.functions.buyresult().call()
     
-    web3 = Web3(Web3.HTTPProvider(sell_url))
-    trade_contract = web3.eth.contract(address=sell_addr, abi= trade_abi)
+    web3 = Web3(Web3.HTTPProvider(BSC_test_url))
+    trade_contract = web3.eth.contract(address=BSC_test_addr, abi= bsc_test)
     tokensource = tokenaddr + '000000000000000000000000'
 
-    nonce = web3.eth.get_transaction_count(account)
+    nonce = web3.eth.get_transaction_count(sender_address)
     print("selling now...")
     sell = trade_contract.functions.sell(int(lockId), account, int(buyresult*0.997), buynet, tokensource, (sign_buy.hash.hex())).build_transaction({
-        'from': account,
+        'from': sender_address,
         'gas': 250000,
         'gasPrice': web3.toWei('10','gwei'),
         'nonce': nonce
@@ -131,7 +138,7 @@ def main():
                 print("Progressing trade...")
                 # usdc = trading(BSC_url, Poly_url, BSC_addr, Poly_addr, [(10**20), (bscprice[0]*10**18)], BSCtoken, "0x42534300", "0x504f4c00" )
                 # usdc = trading(BSC_url, Poly_url, BSC_addr, Poly_addr, [(10**18*balance), (bscprice[0]*10**18)], BSCtoken, '0x42534300', '0x504f4c00' )
-                usdc = trading(BSC_url, Poly_url, BSC_addr, Poly_addr, [(10**18*balance), (bscprice[0]*10**18)], BSCtoken, '0x42534300', '0x504f4c00' )
+                usdc = trading(BSC_test_url, Poly_url, BSC_test_addr, Poly_addr, [(10**18*balance), (bscprice[0]*10**18)], BSCtoken, '0x42534300', '0x504f4c00' )
                 Convert(Poly_addr, 56, 2, 2, usdc)
                 print("trade success!")
         elif auroprice[0]>polyprice[0]:
