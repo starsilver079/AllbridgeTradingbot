@@ -1,4 +1,5 @@
 from web3 import Web3
+from random import randint
 import yaml
 import json
 import time
@@ -21,32 +22,36 @@ Aurotoken = '0x2BAe00C8BC1868a5F7a216E881Bae9e662630111'
 # BSC_addr = 'https://bscscan.com/address/0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
 # Poly_addr = 'https://polygonscan.com/address/0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
 
-Auro_addr = '0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
-BSC_addr = '0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
-Poly_addr = '0x881C47502f192FF87D0B1c9573035EC0E23cf8f3'
+Auro_addr = '0xDdCd304d5D17E43bE37B468D7FC7C9C537E3F6a1'
+BSC_addr = '0xDdCd304d5D17E43bE37B468D7FC7C9C537E3F6a1'
+Poly_addr = '0xDdCd304d5D17E43bE37B468D7FC7C9C537E3F6a1'
 
-f = open('router_abi.json')
+f = open('json/router_abi.json')
 router_abi = json.load(f)
 f.close()
-f = open('Synapse_abi.json')
-Synapse_abi = json.load(f)
-f.close()
-f = open('trade_abi.json')
+f = open('json/trade_abi.json')
 trade_abi = json.load(f)
 f.close()
+
 private_key = conf['key']
+
 web3 = Web3(Web3.HTTPProvider(BSC_url))
 account = web3.eth.account.from_key(private_key).address
-
 balance = int(conf['balance'])
+
+def generate_lock_id():
+    return str(randint(2326436938591503159836224363336437055, 2326436938591503159836224363436437055))
 
 def getPrice(addr, url, path, decimal):
     web3 = Web3(Web3.HTTPProvider(url))
+    
     router_contract = web3.eth.contract(address= addr,abi = router_abi)
-    price = router_contract.functions.getAmountsOut((10**(decimal[0] + 2)), path).call()
+    # price = router_contract.functions.getAmountsOut((10**(decimal[0] + 2)), path).call()
+    price = router_contract.functions.getAmountsOut((10**(decimal[0]) * balance), path).call()
     price[0] = float(price[1]/(10**decimal[1]))
     path.reverse()
-    price1 = router_contract.functions.getAmountsIn((10**(decimal[0]+2)),path).call()
+    # price1 = router_contract.functions.getAmountsIn((10**(decimal[0]+2)),path).call()
+    price1 = router_contract.functions.getAmountsIn((10**(decimal[0]) * balance),path).call()
     price[1] = float(price1[0]/(10**decimal[1]))
     return price
     
@@ -57,15 +62,18 @@ def trading(buy_url, sell_url, buy_addr, sell_addr, buyamounts, tokenaddr, buyne
     trade_contract = web3.eth.contract(address=buy_addr, abi= trade_abi)
     to = account + "000000000000000000000000"
     
-    lockId = '2326436938591503159836224363336437055'
+    # lockId = '2326436938591503159836224363336437055'
+    lockId = generate_lock_id()
 
-    
     nonce = web3.eth.get_transaction_count(account)
     print("buying now...")
-    buy = trade_contract.functions.buy([int(buyamounts[0]), int(buyamounts[1])], account, to, int(lockId), sellnet).build_transaction({
+    deadline = int(time.time()) + 999999999999999999999
+    gas_price = web3.eth.gasPrice
+    
+    buy = trade_contract.functions.buy(deadline, [int(buyamounts[0]), int(buyamounts[1])], to, int(lockId), sellnet).build_transaction({
         'from': account,
         'gas': 250000,
-        'gasPrice': web3.toWei('10','gwei'),
+        'gasPrice': web3.toWei('5','gwei'),
         'nonce': nonce
     })
     
@@ -81,10 +89,12 @@ def trading(buy_url, sell_url, buy_addr, sell_addr, buyamounts, tokenaddr, buyne
 
     nonce = web3.eth.get_transaction_count(account)
     print("selling now...")
-    sell = trade_contract.functions.sell(int(lockId), account, int(buyresult*0.997), buynet, tokensource, (sign_buy.hash.hex())).build_transaction({
+    deadline = (int(time.time())) + 999999999999999999999
+    gas_price = web3.eth.gasPrice
+    sell = trade_contract.functions.sell(deadline, int(lockId), int(buyresult*0.997), buynet, tokensource, (sign_buy.hash.hex())).build_transaction({
         'from': account,
         'gas': 250000,
-        'gasPrice': web3.toWei('10','gwei'),
+        'gasPrice': web3.toWei('50','gwei'),
         'nonce': nonce
     })
     sign_sell = web3.eth.account.sign_transaction(sell, private_key=private_key)
@@ -98,13 +108,21 @@ def trading(buy_url, sell_url, buy_addr, sell_addr, buyamounts, tokenaddr, buyne
 
 def Convert(addr, chainId, indexfrom, indexto, amount):
     trade_contract = web3.eth.contract(address=addr, abi= trade_abi)
-    convert = trade_contract.functions.convert(account, chainId, indexfrom, indexto, amount).build_transaction()
+    nonce = web3.eth.get_transaction_count(account)
+    deadline = int(time.time()) + 999999999999999999999
+    convert = trade_contract.functions.convert(deadline, account, chainId, indexfrom, indexto, amount).build_transaction({
+        'from': account,
+        'gas': 250000,
+        'gasPrice': web3.toWei('10','gwei'),
+        'nonce': nonce
+    })
     sign_convert = web3.eth.account.sign_transaction(convert, private_key= private_key)
     convert_hash = web3.eth.send_raw_transaction(sign_convert.rawTransaction)
     web3.eth.wait_for_transaction_receipt(convert_hash)
     print(sign_convert.hash)
 
 def main():
+    
     while(1):
         bscprice = getPrice('0x10ED43C718714eb63d5aA57B78B54704E256024E', BSC_url, path=["0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", "0x68784ffaa6Ff05E3e04575DF77960DC1D9F42b4a"], decimal=[18,18])
         print('BSC price: ', bscprice)
@@ -179,4 +197,4 @@ def main():
         time.sleep(10)
 
 if __name__ == '__main__':
-    main()
+    main()    
